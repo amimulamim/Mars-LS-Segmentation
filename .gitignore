@@ -36,5 +36,10 @@ trained_model_output.zip
 *.tmp
 *.log
 
+# Model checkpoints (too large for git — use HuggingFace)
 *.pt
-*.json
+trained_model_output.zip
+
+# Keep JSON config/reports tracked (override the above for specific files)
+# !trained_model_output/kfold_results_v4/norm_stats_v4.json
+# !trained_model_output/kfold_results_v4/kfold_report_v4.json

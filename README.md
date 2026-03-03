@@ -17,28 +17,55 @@ This repository contains the complete training and inference pipeline for our Ma
 
 ```
 .
-├── README.md                          # This file
-├── requirements.txt                   # Python dependencies
-├── environment.yml                    # Conda environment specification
-├── submitted_training.ipynb           # Full training notebook (end-to-end)
-├── submitted_infer.ipynb              # Inference-only notebook
-└── trained_model_output/              # Pre-trained weights & artifacts
-    ├── __huggingface_repos__.json     # Pretrained backbone source
+├── README.md                       # This file
+├── requirements.txt                # Python dependencies (pip)
+├── environment.yml                 # Conda environment specification
+├── train.py                        # Training entry point (CLI)
+├── infer.py                        # Inference entry point (CLI)
+├── src/                            # Modular source code
+│   ├── __init__.py
+│   ├── config.py                   # Constants, channel maps, default hyperparameters
+│   ├── normalization.py            # Per-image percentile normalization & stats
+│   ├── augmentations.py            # Albumentations transforms
+│   ├── dataset.py                  # Training & inference Dataset classes
+│   ├── model.py                    # Encoders, decoders, fusions, DualSwinFusionSeg
+│   ├── losses.py                   # BCE+Dice loss, metrics, pos_weight
+│   └── utils.py                    # EMA, seed, TTA, submission I/O, model loading
+├── notebooks/                      # Original Kaggle notebooks (for reference)
+│   ├── submitted_training.ipynb    # Full training notebook
+│   └── submitted_infer.ipynb       # Inference-only notebook
+└── trained_model_output/           # Pre-trained weights & artifacts
+    ├── __huggingface_repos__.json
     └── kfold_results_v4/
-        ├── norm_stats_v4.json         # Per-image normalization statistics
-        ├── kfold_report_v4.json       # Cross-validation metrics report
+        ├── norm_stats_v4.json      # Per-image normalization statistics
+        ├── kfold_report_v4.json    # Cross-validation metrics report
         ├── kfold_plot_unetplusplus_concat1x1.png
         ├── checkpoints/
         │   └── swinv2_unetplusplus_concat1x1/
-        │       ├── fold1_best.pt      # ~433 MB each
+        │       ├── fold1_best.pt   # ~433 MB each
         │       ├── fold2_best.pt
         │       ├── fold3_best.pt
         │       ├── fold4_best.pt
         │       └── fold5_best.pt
         └── submissions/
-            ├── swinv2_unetplusplus_concat1x1/
-            └── swinv2_unetplusplus_concat1x1_kfold_ensemble/
 ```
+
+---
+
+## Pre-trained Checkpoints
+
+Trained model weights (5 folds, ~433 MB each) are hosted on HuggingFace:
+
+> **https://huggingface.co/amimulamim/Mars-LS-Seg_Checkpoints/tree/main/checkpoints/swinv2_unetplusplus_concat1x1**
+
+Download all 5 checkpoint files (`fold1_best.pt` … `fold5_best.pt`) and place them in:
+```
+trained_model_output/kfold_results_v4/checkpoints/swinv2_unetplusplus_concat1x1/
+```
+
+The pretrained Swin V2 Small backbone is automatically downloaded from HuggingFace/timm:
+- Model: `swinv2_small_window8_256.ms_in1k`
+- Source: `timm` library (downloads automatically on first run)
 
 ---
 
@@ -108,7 +135,7 @@ The model is trained on the **Mars Landslide Segmentation (Mars LS)** dataset:
 1. **Per-image percentile normalization**: For each image independently, each band is:
    - Clipped to its own P1 and P99 percentiles
    - Rescaled to [0, 1]
-   
+
    This eliminates sensitivity to absolute value shifts between domains (e.g., DEM in training has elevations [-1345, 3110] while test has [4275, 7232]).
 
 2. **Z-score standardization**: After per-image normalization, channels are standardized using global mean/std computed over the training set (saved in `norm_stats_v4.json`).
@@ -144,89 +171,85 @@ conda activate mars_ls
 ```
 
 **Option C: Kaggle Notebook**
-Both notebooks are designed to run directly on Kaggle with GPU. Dependencies are installed in-notebook via pip.
+The original notebooks in `notebooks/` can run directly on Kaggle with GPU. Dependencies are installed in-notebook via pip.
 
-### 2. Training from Scratch
+### 2. Training from Scratch (Python Scripts)
 
-Open `submitted_training.ipynb` and configure the following in **Cell 4** (Configuration):
-
-```python
-cfg = dict(
-    data_root    = "/path/to/mars-landslide",   # ★ CHANGE: path to dataset root
-    out_dir      = "kfold_results_v4",           # output directory for checkpoints & results
-    encoders     = ["swinv2_small_window8_256"],
-    decoders     = ["unetplusplus"],
-    fusions      = ["concat1x1"],
-    n_folds      = 5,
-    img_size     = 128,
-    epochs       = 50,
-    batch_size   = 16,        # reduce to 8 if OOM
-    num_workers  = 2,
-    lr           = 2e-4,
-    weight_decay = 1e-4,
-    seed         = 42,
-    pretrained   = True,
-    fpn_channels = 256,
-    amp          = True,      # mixed precision (requires CUDA)
-    ema_decay    = 0.995,
-    warmup_epochs= 3,
-    thresh       = 0.5,
-)
+```bash
+python train.py --data_root /path/to/mars-landslide
 ```
 
-Then **run all cells sequentially**. The notebook will:
+All hyperparameters can be overridden via CLI flags:
+```bash
+python train.py \
+    --data_root /path/to/mars-landslide \
+    --out_dir kfold_results_v4 \
+    --encoder_name swinv2_small_window8_256 \
+    --decoder_name unetplusplus \
+    --fusion_name concat1x1 \
+    --epochs 50 \
+    --batch_size 16 \
+    --lr 2e-4 \
+    --n_folds 5 \
+    --seed 42
+```
+
+The script will:
 1. Load and combine train + val images for K-Fold splitting
-2. Compute per-image normalization statistics and save to `norm_stats_v4.json`
-3. Train 5 folds (each fold trains for 50 epochs)
-4. Save best checkpoint per fold to `kfold_results_v4/checkpoints/swinv2_unetplusplus_concat1x1/`
-5. Generate ensemble predictions on the test set
-6. Produce a K-Fold cross-validation report (`kfold_report_v4.json`)
-7. Visualize per-fold metrics
+2. Compute per-image normalization statistics → `norm_stats_v4.json`
+3. Train 5 folds (50 epochs each) with EMA and cosine LR schedule
+4. Save best checkpoint per fold → `checkpoints/swinv2_unetplusplus_concat1x1/`
+5. Generate ensemble predictions on the test set → `submissions/`
+6. Produce a K-Fold report → `kfold_report_v4.json`
+7. Save training curves plot
 
 **Estimated training time**: ~3–5 hours on a single NVIDIA T4/P100 GPU (50 epochs × 5 folds).
 
-### 3. Inference with Pre-trained Weights
+### 3. Inference with Pre-trained Weights (Python Scripts)
 
-Open `submitted_infer.ipynb` and configure the following in **Cell 2** (Configurable Paths):
-
-```python
-TEST_DATA_DIR   = "/path/to/test/images"             # ★ CHANGE: folder with test .tif files
-CHECKPOINT_DIR  = "trained_model_output/kfold_results_v4/checkpoints/swinv2_unetplusplus_concat1x1"
-STATS_JSON_PATH = "trained_model_output/kfold_results_v4/norm_stats_v4.json"
-OUTPUT_DIR      = "v4_inference_output"
+```bash
+python infer.py \
+    --test_dir /path/to/test/images \
+    --ckpt_dir trained_model_output/kfold_results_v4/checkpoints/swinv2_unetplusplus_concat1x1 \
+    --stats_json trained_model_output/kfold_results_v4/norm_stats_v4.json \
+    --out_dir inference_output
 ```
 
-Then **run all cells sequentially**. The notebook will:
-1. Load normalization statistics from `norm_stats_v4.json`
-2. Load all 5 fold models
-3. Run ensemble inference with 4-fold TTA
-4. Output binary mask TIFs and a `submission.zip`
+Options:
+```bash
+# Disable TTA for faster inference:
+python infer.py --test_dir ... --ckpt_dir ... --stats_json ... --no_tta
 
-### 4. Pre-trained Weights
-
-Pre-trained model checkpoints (5 folds, ~433 MB each, ~2.1 GB total) are provided in:
-```
-trained_model_output/kfold_results_v4/checkpoints/swinv2_unetplusplus_concat1x1/
+# Custom threshold:
+python infer.py --test_dir ... --ckpt_dir ... --stats_json ... --thresh 0.5
 ```
 
-The pretrained Swin V2 Small backbone is automatically downloaded from HuggingFace/timm:
-- Model: `swinv2_small_window8_256.ms_in1k`
-- Source: `timm` library (downloads automatically on first run)
+The script outputs:
+- `inference_output/predictions/` — individual mask TIFs
+- `inference_output/submission.zip` — zipped submission
+
+### 4. Training/Inference via Notebooks
+
+The original Kaggle notebooks are preserved in `notebooks/`:
+- `notebooks/submitted_training.ipynb` — full training pipeline
+- `notebooks/submitted_infer.ipynb` — inference with TTA + ensemble
+
+Configure paths in the notebook cells and run all cells sequentially.
 
 ---
 
 ## Cross-Validation Results
 
-Results from 5-fold cross-validation (reported in `kfold_report_v4.json`):
+Results from 5-fold cross-validation (from `kfold_report_v4.json`):
 
 | Metric | Mean ± Std |
 |--------|-----------|
-| **mIoU** | See `kfold_report_v4.json` |
-| **IoU (foreground)** | See `kfold_report_v4.json` |
-| **IoU (background)** | See `kfold_report_v4.json` |
-| **F1 (foreground)** | See `kfold_report_v4.json` |
-| **Precision (fg)** | See `kfold_report_v4.json` |
-| **Recall (fg)** | See `kfold_report_v4.json` |
+| **mIoU** | 0.8393 ± 0.0098 |
+| **IoU (foreground)** | 0.7974 ± 0.0154 |
+| **IoU (background)** | 0.8813 ± 0.0054 |
+| **F1 (foreground)** | 0.8872 ± 0.0096 |
+| **Precision (fg)** | 0.8626 ± 0.0106 |
+| **Recall (fg)** | 0.9133 ± 0.0111 |
 
 ---
 
@@ -247,13 +270,17 @@ Training with `batch_size=16` requires ~10 GB VRAM. Reduce to 8 if running on 8 
 
 | File | Description |
 |------|-------------|
-| `submitted_training.ipynb` | Complete training pipeline: data loading, preprocessing, model definition, K-Fold training loop, evaluation, and ensemble test prediction |
-| `submitted_infer.ipynb` | Inference-only notebook: loads pre-trained checkpoints, applies per-image normalization, runs TTA + ensemble, outputs submission masks |
-| `requirements.txt` | Python package dependencies with minimum versions |
-| `environment.yml` | Conda environment specification |
-| `trained_model_output/kfold_results_v4/norm_stats_v4.json` | Channel-wise mean/std after per-image percentile normalization (needed for inference) |
-| `trained_model_output/kfold_results_v4/kfold_report_v4.json` | Detailed per-fold and aggregate cross-validation metrics |
-| `trained_model_output/kfold_results_v4/checkpoints/` | Trained model weights (5 folds) |
+| `train.py` | CLI training entry point — K-Fold CV, checkpointing, ensemble |
+| `infer.py` | CLI inference entry point — loads checkpoints, TTA, submission zip |
+| `src/config.py` | Channel maps, band indices, default hyperparameters |
+| `src/normalization.py` | Per-image percentile normalization, stats I/O |
+| `src/augmentations.py` | Albumentations augmentation pipelines |
+| `src/dataset.py` | `MarsSegDataset` (train/val) and `InferenceDataset` (test) |
+| `src/model.py` | `DualSwinFusionSeg` + all decoders (UNet++, UPerNet, etc.) + all fusions |
+| `src/losses.py` | `WeightedBCEDiceLoss`, evaluation metrics, pos_weight computation |
+| `src/utils.py` | EMA, seed, TTA, model loading, submission writing |
+| `notebooks/submitted_training.ipynb` | Original self-contained training notebook |
+| `notebooks/submitted_infer.ipynb` | Original self-contained inference notebook |
 
 ---
 

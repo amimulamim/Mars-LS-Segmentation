@@ -1,0 +1,1 @@
+{"repos": [{"repoId": "timm/swinv2_small_window8_256.ms_in1k", "repoType": "model", "commitHash": "db3a0c7e5d97487e7e874c943838569b84fe8e54", "filePaths": ["model.safetensors"]}]}
