@@ -12,7 +12,7 @@ Usage
 
 All hyperparameters can be overridden via CLI flags (see --help).
 The script produces:
-  <out_dir>/
+  output/kfold_results_v4/   (default --out_dir)
     norm_stats_v4.json        — normalization statistics
     kfold_report_v4.json      — per-fold and aggregate metrics
     checkpoints/<tag>/fold{1..K}_best.pt
@@ -331,7 +331,7 @@ def parse_args():
     p = argparse.ArgumentParser(description="Mars Landslide Seg — K-Fold Training")
     p.add_argument("--data_root",    type=str, required=True,
                    help="Path to dataset root (contains train/, val/, test/)")
-    p.add_argument("--out_dir",      type=str, default="kfold_results_v4")
+    p.add_argument("--out_dir",      type=str, default="output/kfold_results_v4")
     p.add_argument("--encoder_name", type=str, default=DEFAULT_CFG["encoder_name"])
     p.add_argument("--decoder_name", type=str, default=DEFAULT_CFG["decoder_name"])
     p.add_argument("--fusion_name",  type=str, default=DEFAULT_CFG["fusion_name"])

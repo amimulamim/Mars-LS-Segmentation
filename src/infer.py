@@ -19,8 +19,8 @@ Usage
     # After training with src/train.py:
     python -m src.infer \
         --test_dir data/phase1_dataset/test/images \
-        --ckpt_dir kfold_results_v4/checkpoints/swinv2_unetplusplus_concat1x1 \
-        --stats_json kfold_results_v4/norm_stats_v4.json
+        --ckpt_dir output/kfold_results_v4/checkpoints/swinv2_unetplusplus_concat1x1 \
+        --stats_json output/kfold_results_v4/norm_stats_v4.json
 
     # Disable TTA for faster (but slightly less accurate) inference:
     python -m src.infer --test_dir ... --ckpt_dir ... --stats_json ... --no_tta
@@ -51,7 +51,7 @@ def parse_args():
                    help="Path to norm_stats_v4.json. If omitted, recompute from --recompute_from")
     p.add_argument("--recompute_from", type=str, default=None,
                    help="If stats_json unavailable, recompute stats from this dataset root")
-    p.add_argument("--out_dir",      type=str, default="inference_output")
+    p.add_argument("--out_dir",      type=str, default="output/inference_output")
     p.add_argument("--encoder_name", type=str, default=DEFAULT_CFG["encoder_name"])
     p.add_argument("--decoder_name", type=str, default=DEFAULT_CFG["decoder_name"])
     p.add_argument("--fusion_name",  type=str, default=DEFAULT_CFG["fusion_name"])

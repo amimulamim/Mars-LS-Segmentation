@@ -20,7 +20,8 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Inference outputs (regeneratable)
+# All runtime outputs (regeneratable — training results, inference, logs)
+output/
 v4_inference_output/
 *_inference_output/
 
@@ -36,6 +37,8 @@ data/
 # Temporary / scratch
 *.tmp
 *.log
+train_*.log
+infer_*.log
 
 # Model checkpoints (too large for git — use HuggingFace)
 *.pt
@@ -47,3 +50,4 @@ trained_model_output.zip
 
 submitted_training.ipynb
 submitted_infer.ipynb
+dual_swin_kfold_domain_adapted(1).zip

@@ -50,6 +50,14 @@ This repository contains the complete training and inference pipeline for our Ma
 │   └── phase2_dataset/             # Mars LS Phase 2 test set
 │       └── test/
 │           └── images/             # 276 .tif files
+├── output/                         # All runtime outputs (gitignored)
+│   ├── kfold_results_v4/           # Default training output (--out_dir)
+│   │   ├── norm_stats_v4.json
+│   │   ├── kfold_report_v4.json
+│   │   ├── checkpoints/
+│   │   └── submissions/
+│   ├── inference_output_phase1/    # Default inference output (phase 1)
+│   └── inference_output_phase2/    # Default inference output (phase 2)
 └── trained_model_output/           # Pre-trained weights & artifacts
     ├── __huggingface_repos__.json
     └── kfold_results_v4/
@@ -209,11 +217,13 @@ The original notebooks in `notebooks/` can run directly on Kaggle with GPU. Depe
 python -m src.train --data_root data/phase1_dataset
 ```
 
+Outputs go to `output/kfold_results_v4/` by default (gitignored).
+
 All hyperparameters can be overridden via CLI flags:
 ```bash
 python -m src.train \
     --data_root data/phase1_dataset \
-    --out_dir kfold_results_v4 \
+    --out_dir output/kfold_results_v4 \
     --encoder_name swinv2_small_window8_256 \
     --decoder_name unetplusplus \
     --fusion_name concat1x1 \
@@ -243,7 +253,7 @@ python -m src.infer \
     --test_dir data/phase1_dataset/test/images \
     --ckpt_dir trained_model_output/kfold_results_v4/checkpoints/swinv2_unetplusplus_concat1x1 \
     --stats_json trained_model_output/kfold_results_v4/norm_stats_v4.json \
-    --out_dir inference_output_phase1
+    --out_dir output/inference_output_phase1
 ```
 
 **Phase 2 test set:**
@@ -252,7 +262,15 @@ python -m src.infer \
     --test_dir data/phase2_dataset/test/images \
     --ckpt_dir trained_model_output/kfold_results_v4/checkpoints/swinv2_unetplusplus_concat1x1 \
     --stats_json trained_model_output/kfold_results_v4/norm_stats_v4.json \
-    --out_dir inference_output_phase2
+    --out_dir output/inference_output_phase2
+```
+
+**After training from scratch** (uses `output/` defaults automatically):
+```bash
+python -m src.infer \
+    --test_dir data/phase1_dataset/test/images \
+    --ckpt_dir output/kfold_results_v4/checkpoints/swinv2_unetplusplus_concat1x1 \
+    --stats_json output/kfold_results_v4/norm_stats_v4.json
 ```
 
 Options:
