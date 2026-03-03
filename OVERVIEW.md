@@ -4,23 +4,36 @@
 
 ## Table of Contents
 
-1. [Dual-Encoder Swin Transformer V2](#1-dual-encoder-swin-transformer-v2)
-2. [Decoders](#2-decoders)
-   - [2a. UNet++ (Default)](#2a-unet-default)
-   - [2b. Hybrid SegFormer × UNet++ Decoder](#2b-hybrid-segformer--unet-decoder)
-   - [2c. Other Decoders](#2c-other-decoders)
-3. [Channel Attention Mechanisms](#3-channel-attention-mechanisms)
-   - [3a. Squeeze-and-Excitation (SE)](#3a-squeeze-and-excitation-se)
-   - [3b. Efficient Channel Attention (ECA)](#3b-efficient-channel-attention-eca)
-   - [3c. CBAM (Channel + Spatial)](#3c-cbam-channel--spatial)
-4. [Multi-Location Attention](#4-multi-location-attention)
-5. [Cross-Modal Encoder Attention](#5-cross-modal-encoder-attention)
-6. [Fusion Strategies](#6-fusion-strategies)
-7. [Late Fusion Architecture](#7-late-fusion-architecture)
-8. [Loss Functions & Training Objectives](#8-loss-functions--training-objectives)
-9. [Domain-Invariant Normalization](#9-domain-invariant-normalization)
-10. [Training Techniques](#10-training-techniques)
-11. [Experiment Version Progression](#11-experiment-version-progression)
+- [Concepts \& Architecture Deep-Dive](#concepts--architecture-deep-dive)
+  - [Table of Contents](#table-of-contents)
+  - [1. Dual-Encoder Swin Transformer V2](#1-dual-encoder-swin-transformer-v2)
+  - [2. Decoders](#2-decoders)
+    - [2a. UNet++ (Default)](#2a-unet-default)
+    - [2b. Hybrid SegFormer × UNet++ Decoder](#2b-hybrid-segformer--unet-decoder)
+    - [2c. Other Decoders](#2c-other-decoders)
+  - [3. Channel Attention Mechanisms](#3-channel-attention-mechanisms)
+    - [3a. Squeeze-and-Excitation (SE)](#3a-squeeze-and-excitation-se)
+    - [3b. Efficient Channel Attention (ECA)](#3b-efficient-channel-attention-eca)
+    - [3c. CBAM (Channel + Spatial)](#3c-cbam-channel--spatial)
+  - [4. Multi-Location Attention](#4-multi-location-attention)
+  - [5. Cross-Modal Encoder Attention](#5-cross-modal-encoder-attention)
+  - [6. Fusion Strategies](#6-fusion-strategies)
+  - [7. Late Fusion Architecture](#7-late-fusion-architecture)
+  - [8. Loss Functions \& Training Objectives](#8-loss-functions--training-objectives)
+    - [Default Loss](#default-loss)
+    - [Experiment Losses](#experiment-losses)
+    - [Metrics](#metrics)
+  - [9. Domain-Invariant Normalization](#9-domain-invariant-normalization)
+    - [Two-Stage Normalization](#two-stage-normalization)
+  - [10. Training Techniques](#10-training-techniques)
+    - [Exponential Moving Average (EMA)](#exponential-moving-average-ema)
+    - [K-Fold Cross-Validation](#k-fold-cross-validation)
+    - [Test-Time Augmentation (TTA)](#test-time-augmentation-tta)
+    - [Learning Rate Schedule](#learning-rate-schedule)
+    - [Mixed Precision (AMP)](#mixed-precision-amp)
+  - [11. Experiment Version Progression](#11-experiment-version-progression)
+    - [Notebooks and Experiments](#notebooks-and-experiments)
+  - [Source Code Reference](#source-code-reference)
 
 ---
 
@@ -342,8 +355,6 @@ The project evolved through multiple architecture experiments. The table below s
 
 | Notebook / Experiment | Description |
 |----------------------|-------------|
-| `notebooks/submitted_training.ipynb` | Submitted training pipeline |
-| `notebooks/submitted_infer.ipynb` | Submitted inference pipeline |
 | `notebooks/dual_swin_unetpp_kfold_training.ipynb` | v4 training — Dual Swin + UNet++ + concat |
 | `notebooks/dual_swin_unetpp_kfold_infer.ipynb` | v4 inference |
 | `experiments/mid_fusion_concat_eca_hybrid_dec/` | v6–v7 — Hybrid decoder + channel attention |

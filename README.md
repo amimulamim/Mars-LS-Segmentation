@@ -122,8 +122,6 @@ The experiment notebooks in `experiments/` explore additional concepts not in th
 │                                   #   + DualSwinLateFusionSeg
 │
 ├── notebooks/                      # Main submission notebooks (Kaggle-ready)
-│   ├── submitted_training.ipynb
-│   ├── submitted_infer.ipynb
 │   ├── dual_swin_unetpp_kfold_training.ipynb
 │   └── dual_swin_unetpp_kfold_infer.ipynb
 │
