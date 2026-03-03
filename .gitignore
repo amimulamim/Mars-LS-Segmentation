@@ -1,0 +1,40 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+mars_ls_env/
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Inference outputs (regeneratable)
+v4_inference_output/
+*_inference_output/
+
+# Large zip archives of model outputs (use Git LFS or HuggingFace for weights)
+trained_model_output.zip
+
+# Dataset files (should not be committed)
+*.tif
+*.TIF
+*.npy
+
+# Temporary / scratch
+*.tmp
+*.log
+
+*.pt
+*.json
