@@ -183,9 +183,26 @@ def zip_submission(pred_dir, zip_path):
 # Model loading
 # ──────────────────────────────────────────────────────────────
 def load_fold_models(ckpt_dir, num_folds, encoder_name, img_size,
-                     fpn_channels, fusion_name, decoder_name, device):
-    """Load best checkpoint from each fold, return list of eval-mode models."""
-    from .model import DualSwinFusionSeg
+                     fpn_channels, fusion_name, decoder_name, device,
+                     model_class="DualSwinFusionSeg", **extra_model_kwargs):
+    """Load best checkpoint from each fold, return list of eval-mode models.
+
+    Args:
+        model_class: ``"DualSwinFusionSeg"`` (default) or
+                     ``"DualSwinLateFusionSeg"`` for late-fusion models.
+        extra_model_kwargs: forwarded to the model constructor (e.g.
+                            ``input_attn``, ``intra_encoder_attn``, …).
+    """
+    from .model import DualSwinFusionSeg, DualSwinLateFusionSeg
+
+    MODEL_MAP = {
+        "DualSwinFusionSeg":       DualSwinFusionSeg,
+        "DualSwinLateFusionSeg":   DualSwinLateFusionSeg,
+    }
+    cls = MODEL_MAP.get(model_class)
+    if cls is None:
+        raise ValueError(f"Unknown model_class '{model_class}'. "
+                         f"Choose from {list(MODEL_MAP)}")
 
     ckpt_dir = Path(ckpt_dir)
     models = []
@@ -194,14 +211,23 @@ def load_fold_models(ckpt_dir, num_folds, encoder_name, img_size,
         if not ckpt_path.exists():
             print(f"  [WARNING] {ckpt_path} not found — skipping fold {fold}")
             continue
-        model = DualSwinFusionSeg(
-            encoder_name=encoder_name,
-            pretrained=False,
-            img_size=img_size,
-            fpn_channels=fpn_channels,
-            fusion_name=fusion_name,
-            decoder_name=decoder_name,
-        ).to(device)
+
+        # Build model — mid-fusion needs fusion_name & decoder_name,
+        # late-fusion doesn't but ignores them gracefully.
+        if cls is DualSwinFusionSeg:
+            model = cls(
+                encoder_name=encoder_name, pretrained=False,
+                img_size=img_size, fpn_channels=fpn_channels,
+                fusion_name=fusion_name, decoder_name=decoder_name,
+                **extra_model_kwargs,
+            ).to(device)
+        else:  # DualSwinLateFusionSeg
+            model = cls(
+                encoder_name=encoder_name, pretrained=False,
+                img_size=img_size, fpn_channels=fpn_channels,
+                **extra_model_kwargs,
+            ).to(device)
+
         ckpt = torch.load(str(ckpt_path), map_location=device)
         state = ckpt.get("model", ckpt.get("model_state", ckpt.get("state_dict", ckpt)))
         missing, unexpected = model.load_state_dict(state, strict=True)
