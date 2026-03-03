@@ -27,9 +27,10 @@ v4_inference_output/
 # Large zip archives of model outputs (use Git LFS or HuggingFace for weights)
 trained_model_output.zip
 
-# Dataset files (should not be committed)
-# *.tif
-# *.TIF
+# Dataset files (too large for git — place manually, see README)
+data/
+*.tif
+*.TIF
 *.npy
 
 # Temporary / scratch

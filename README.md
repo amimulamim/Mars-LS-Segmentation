@@ -32,8 +32,21 @@ This repository contains the complete training and inference pipeline for our Ma
 │   ├── losses.py                   # BCE+Dice loss, metrics, pos_weight
 │   └── utils.py                    # EMA, seed, TTA, submission I/O, model loading
 ├── notebooks/                      # Original Kaggle notebooks (for reference)
-│   ├── submitted_training.ipynb    # Full training notebook
-│   └── submitted_infer.ipynb       # Inference-only notebook
+│   ├── dual_swin_unetpp_kfold_training.ipynb  # Full training notebook
+│   └── dual_swin_unetpp_kfold_infer.ipynb     # Inference-only notebook
+├── data/                           # Datasets (not tracked by git — see below)
+│   ├── phase1_dataset/             # Mars LS Phase 1 dataset
+│   │   ├── train/
+│   │   │   ├── images/             # 465 .tif files
+│   │   │   └── masks/              # 465 .tif files
+│   │   ├── val/
+│   │   │   ├── images/             # 66 .tif files
+│   │   │   └── masks/              # 66 .tif files
+│   │   └── test/
+│   │       └── images/             # 133 .tif files
+│   └── phase2_dataset/             # Mars LS Phase 2 test set
+│       └── test/
+│           └── images/             # 276 .tif files
 └── trained_model_output/           # Pre-trained weights & artifacts
     ├── __huggingface_repos__.json
     └── kfold_results_v4/
@@ -69,6 +82,49 @@ The pretrained Swin V2 Small backbone is automatically downloaded from HuggingFa
 
 ---
 
+## Dataset
+
+The model is trained on the **Mars Landslide Segmentation (Mars LS)** dataset:
+- **Format**: 7-band GeoTIFF files (128×128 pixels)
+- **Bands** (1-indexed, rasterio order):
+  - Band 1: Thermal
+  - Band 2: Slope
+  - Band 3: DEM (Digital Elevation Model)
+  - Band 4: Grayscale
+  - Bands 5, 6, 7: RGB
+- **Masks**: Binary (0 = background, 1 = landslide)
+
+### Data Splits
+
+| Split | Phase | Images | Masks |
+|-------|-------|--------|-------|
+| `data/phase1_dataset/train/` | Phase 1 | 465 | 465 |
+| `data/phase1_dataset/val/` | Phase 1 | 66 | 66 |
+| `data/phase1_dataset/test/` | Phase 1 | 133 | — |
+| `data/phase2_dataset/test/` | Phase 2 | 276 | — |
+
+> **Note:** The `data/` directory is **not tracked by git** (too large). Place the datasets manually following the structure above.
+
+### Expected Dataset Directory Structure
+
+```
+data/
+├── phase1_dataset/
+│   ├── train/
+│   │   ├── images/    # .tif files
+│   │   └── masks/     # .tif files (same filenames)
+│   ├── val/
+│   │   ├── images/
+│   │   └── masks/
+│   └── test/
+│       └── images/
+└── phase2_dataset/
+    └── test/
+        └── images/
+```
+
+---
+
 ## Model Architecture
 
 ```
@@ -98,35 +154,6 @@ Input: 7-band GeoTIFF (RGB[5,6,7] + DEM[3] + Slope[2] + Thermal[1] + Gray[4])
 | **EMA** | Decay=0.995 with warmup |
 | **Image Size** | 128×128 (native resolution) |
 | **Parameters** | ~100M (dual encoder + decoder + fusion) |
-
----
-
-## Dataset
-
-The model is trained on the **Mars Landslide Segmentation (Mars LS)** dataset:
-- **Format**: 7-band GeoTIFF files (128×128 pixels)
-- **Bands** (1-indexed, rasterio order):
-  - Band 1: Thermal
-  - Band 2: Slope
-  - Band 3: DEM (Digital Elevation Model)
-  - Band 4: Grayscale
-  - Bands 5, 6, 7: RGB
-- **Masks**: Binary (0 = background, 1 = landslide)
-- **Split**: Train + Val combined for K-Fold CV; separate test set
-
-### Expected Dataset Directory Structure
-
-```
-<data_root>/
-├── train/
-│   ├── images/    # .tif files
-│   └── masks/     # .tif files (same filenames)
-├── val/
-│   ├── images/
-│   └── masks/
-└── test/
-    └── images/
-```
 
 ---
 
@@ -176,13 +203,13 @@ The original notebooks in `notebooks/` can run directly on Kaggle with GPU. Depe
 ### 2. Training from Scratch (Python Scripts)
 
 ```bash
-python train.py --data_root /path/to/mars-landslide
+python train.py --data_root data/phase1_dataset
 ```
 
 All hyperparameters can be overridden via CLI flags:
 ```bash
 python train.py \
-    --data_root /path/to/mars-landslide \
+    --data_root data/phase1_dataset \
     --out_dir kfold_results_v4 \
     --encoder_name swinv2_small_window8_256 \
     --decoder_name unetplusplus \
@@ -207,21 +234,31 @@ The script will:
 
 ### 3. Inference with Pre-trained Weights (Python Scripts)
 
+**Phase 1 test set:**
 ```bash
 python infer.py \
-    --test_dir /path/to/test/images \
+    --test_dir data/phase1_dataset/test/images \
     --ckpt_dir trained_model_output/kfold_results_v4/checkpoints/swinv2_unetplusplus_concat1x1 \
     --stats_json trained_model_output/kfold_results_v4/norm_stats_v4.json \
-    --out_dir inference_output
+    --out_dir inference_output_phase1
+```
+
+**Phase 2 test set:**
+```bash
+python infer.py \
+    --test_dir data/phase2_dataset/test/images \
+    --ckpt_dir trained_model_output/kfold_results_v4/checkpoints/swinv2_unetplusplus_concat1x1 \
+    --stats_json trained_model_output/kfold_results_v4/norm_stats_v4.json \
+    --out_dir inference_output_phase2
 ```
 
 Options:
 ```bash
 # Disable TTA for faster inference:
-python infer.py --test_dir ... --ckpt_dir ... --stats_json ... --no_tta
+python infer.py --test_dir data/phase1_dataset/test/images --ckpt_dir ... --stats_json ... --no_tta
 
 # Custom threshold:
-python infer.py --test_dir ... --ckpt_dir ... --stats_json ... --thresh 0.5
+python infer.py --test_dir data/phase1_dataset/test/images --ckpt_dir ... --stats_json ... --thresh 0.5
 ```
 
 The script outputs:
@@ -231,8 +268,8 @@ The script outputs:
 ### 4. Training/Inference via Notebooks
 
 The original Kaggle notebooks are preserved in `notebooks/`:
-- `notebooks/submitted_training.ipynb` — full training pipeline
-- `notebooks/submitted_infer.ipynb` — inference with TTA + ensemble
+- `notebooks/dual_swin_unetpp_kfold_training.ipynb` — full training pipeline
+- `notebooks/dual_swin_unetpp_kfold_infer.ipynb` — inference with TTA + ensemble
 
 Configure paths in the notebook cells and run all cells sequentially.
 
@@ -279,8 +316,8 @@ Training with `batch_size=16` requires ~10 GB VRAM. Reduce to 8 if running on 8 
 | `src/model.py` | `DualSwinFusionSeg` + all decoders (UNet++, UPerNet, etc.) + all fusions |
 | `src/losses.py` | `WeightedBCEDiceLoss`, evaluation metrics, pos_weight computation |
 | `src/utils.py` | EMA, seed, TTA, model loading, submission writing |
-| `notebooks/submitted_training.ipynb` | Original self-contained training notebook |
-| `notebooks/submitted_infer.ipynb` | Original self-contained inference notebook |
+| `notebooks/dual_swin_unetpp_kfold_training.ipynb` | Self-contained training notebook (Dual Swin + UNet++) |
+| `notebooks/dual_swin_unetpp_kfold_infer.ipynb` | Self-contained inference notebook (ensemble + TTA) |
 
 ---
 

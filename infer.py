@@ -4,15 +4,21 @@ infer.py — Ensemble Inference with TTA for Dual Swin V2 Segmentation.
 
 Usage
 -----
-    # Using pre-trained checkpoints:
+    # Phase 1 test set (using pre-trained checkpoints):
     python infer.py \
-        --test_dir /path/to/test/images \
+        --test_dir data/phase1_dataset/test/images \
+        --ckpt_dir trained_model_output/kfold_results_v4/checkpoints/swinv2_unetplusplus_concat1x1 \
+        --stats_json trained_model_output/kfold_results_v4/norm_stats_v4.json
+
+    # Phase 2 test set:
+    python infer.py \
+        --test_dir data/phase2_dataset/test/images \
         --ckpt_dir trained_model_output/kfold_results_v4/checkpoints/swinv2_unetplusplus_concat1x1 \
         --stats_json trained_model_output/kfold_results_v4/norm_stats_v4.json
 
     # After training with train.py:
     python infer.py \
-        --test_dir /path/to/test/images \
+        --test_dir data/phase1_dataset/test/images \
         --ckpt_dir kfold_results_v4/checkpoints/swinv2_unetplusplus_concat1x1 \
         --stats_json kfold_results_v4/norm_stats_v4.json
 

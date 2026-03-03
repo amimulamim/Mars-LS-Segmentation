@@ -4,10 +4,10 @@ train.py — K-Fold Cross-Validation Training for Dual Swin V2 Segmentation.
 
 Usage
 -----
-    python train.py --data_root /path/to/mars-landslide
+    python train.py --data_root data/phase1_dataset
 
     # Override defaults:
-    python train.py --data_root /data/mars-ls --epochs 30 --batch_size 8 \
+    python train.py --data_root data/phase1_dataset --epochs 30 --batch_size 8 \
                     --decoder_name unetplusplus --fusion_name concat1x1
 
 All hyperparameters can be overridden via CLI flags (see --help).
