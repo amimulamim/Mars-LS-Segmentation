@@ -5,25 +5,25 @@ infer.py — Ensemble Inference with TTA for Dual Swin V2 Segmentation.
 Usage
 -----
     # Phase 1 test set (using pre-trained checkpoints):
-    python infer.py \
+    python -m src.infer \
         --test_dir data/phase1_dataset/test/images \
         --ckpt_dir trained_model_output/kfold_results_v4/checkpoints/swinv2_unetplusplus_concat1x1 \
         --stats_json trained_model_output/kfold_results_v4/norm_stats_v4.json
 
     # Phase 2 test set:
-    python infer.py \
+    python -m src.infer \
         --test_dir data/phase2_dataset/test/images \
         --ckpt_dir trained_model_output/kfold_results_v4/checkpoints/swinv2_unetplusplus_concat1x1 \
         --stats_json trained_model_output/kfold_results_v4/norm_stats_v4.json
 
-    # After training with train.py:
-    python infer.py \
+    # After training with src/train.py:
+    python -m src.infer \
         --test_dir data/phase1_dataset/test/images \
         --ckpt_dir kfold_results_v4/checkpoints/swinv2_unetplusplus_concat1x1 \
         --stats_json kfold_results_v4/norm_stats_v4.json
 
     # Disable TTA for faster (but slightly less accurate) inference:
-    python infer.py --test_dir ... --ckpt_dir ... --stats_json ... --no_tta
+    python -m src.infer --test_dir ... --ckpt_dir ... --stats_json ... --no_tta
 """
 
 import argparse
@@ -33,10 +33,10 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from src.config import DEVICE, DEFAULT_CFG
-from src.normalization import load_norm_stats, compute_mean_std_per_image_norm
-from src.dataset import InferenceDataset
-from src.utils import (
+from .config import DEVICE, DEFAULT_CFG
+from .normalization import load_norm_stats, compute_mean_std_per_image_norm
+from .dataset import InferenceDataset
+from .utils import (
     set_seed, load_fold_models, ensemble_predict_tta, zip_submission,
 )
 
@@ -80,7 +80,7 @@ def main():
         print(f"Loaded stats from {args.stats_json}")
         print(f"  normalization: {stats_data.get('normalization', '?')}")
     elif args.recompute_from:
-        from src.config import BAND_INDICES
+        from .config import BAND_INDICES
         root = Path(args.recompute_from)
         imgs = sorted(
             list((root / "train" / "images").glob("*.tif")) +

@@ -20,10 +20,10 @@ This repository contains the complete training and inference pipeline for our Ma
 ├── README.md                       # This file
 ├── requirements.txt                # Python dependencies (pip)
 ├── environment.yml                 # Conda environment specification
-├── train.py                        # Training entry point (CLI)
-├── infer.py                        # Inference entry point (CLI)
 ├── src/                            # Modular source code
 │   ├── __init__.py
+│   ├── train.py                    # Training entry point (CLI)
+│   ├── infer.py                    # Inference entry point (CLI)
 │   ├── config.py                   # Constants, channel maps, default hyperparameters
 │   ├── normalization.py            # Per-image percentile normalization & stats
 │   ├── augmentations.py            # Albumentations transforms
@@ -206,12 +206,12 @@ The original notebooks in `notebooks/` can run directly on Kaggle with GPU. Depe
 ### 2. Training from Scratch (Python Scripts)
 
 ```bash
-python train.py --data_root data/phase1_dataset
+python -m src.train --data_root data/phase1_dataset
 ```
 
 All hyperparameters can be overridden via CLI flags:
 ```bash
-python train.py \
+python -m src.train \
     --data_root data/phase1_dataset \
     --out_dir kfold_results_v4 \
     --encoder_name swinv2_small_window8_256 \
@@ -239,7 +239,7 @@ The script will:
 
 **Phase 1 test set:**
 ```bash
-python infer.py \
+python -m src.infer \
     --test_dir data/phase1_dataset/test/images \
     --ckpt_dir trained_model_output/kfold_results_v4/checkpoints/swinv2_unetplusplus_concat1x1 \
     --stats_json trained_model_output/kfold_results_v4/norm_stats_v4.json \
@@ -248,7 +248,7 @@ python infer.py \
 
 **Phase 2 test set:**
 ```bash
-python infer.py \
+python -m src.infer \
     --test_dir data/phase2_dataset/test/images \
     --ckpt_dir trained_model_output/kfold_results_v4/checkpoints/swinv2_unetplusplus_concat1x1 \
     --stats_json trained_model_output/kfold_results_v4/norm_stats_v4.json \
@@ -258,10 +258,10 @@ python infer.py \
 Options:
 ```bash
 # Disable TTA for faster inference:
-python infer.py --test_dir data/phase1_dataset/test/images --ckpt_dir ... --stats_json ... --no_tta
+python -m src.infer --test_dir data/phase1_dataset/test/images --ckpt_dir ... --stats_json ... --no_tta
 
 # Custom threshold:
-python infer.py --test_dir data/phase1_dataset/test/images --ckpt_dir ... --stats_json ... --thresh 0.5
+python -m src.infer --test_dir data/phase1_dataset/test/images --ckpt_dir ... --stats_json ... --thresh 0.5
 ```
 
 The script outputs:
@@ -314,8 +314,8 @@ Training with `batch_size=16` requires ~10 GB VRAM. Reduce to 8 if running on 8 
 
 | File | Description |
 |------|-------------|
-| `train.py` | CLI training entry point — K-Fold CV, checkpointing, ensemble |
-| `infer.py` | CLI inference entry point — loads checkpoints, TTA, submission zip |
+| `src/train.py` | CLI training entry point — K-Fold CV, checkpointing, ensemble |
+| `src/infer.py` | CLI inference entry point — loads checkpoints, TTA, submission zip |
 | `src/config.py` | Channel maps, band indices, default hyperparameters |
 | `src/normalization.py` | Per-image percentile normalization, stats I/O |
 | `src/augmentations.py` | Albumentations augmentation pipelines |

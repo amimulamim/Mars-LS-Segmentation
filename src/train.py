@@ -4,11 +4,11 @@ train.py — K-Fold Cross-Validation Training for Dual Swin V2 Segmentation.
 
 Usage
 -----
-    python train.py --data_root data/phase1_dataset
+    python -m src.train --data_root data/phase1_dataset
 
     # Override defaults:
-    python train.py --data_root data/phase1_dataset --epochs 30 --batch_size 8 \
-                    --decoder_name unetplusplus --fusion_name concat1x1
+    python -m src.train --data_root data/phase1_dataset --epochs 30 --batch_size 8 \
+                        --decoder_name unetplusplus --fusion_name concat1x1
 
 All hyperparameters can be overridden via CLI flags (see --help).
 The script produces:
@@ -35,17 +35,17 @@ from sklearn.model_selection import KFold
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from src.config import (
+from .config import (
     BAND_INDICES, RGB_BANDS, AUX_BANDS, DEVICE, DEFAULT_CFG,
 )
-from src.normalization import (
+from .normalization import (
     compute_mean_std_per_image_norm, save_norm_stats,
 )
-from src.augmentations import build_train_transforms, build_val_transforms
-from src.dataset import MarsSegDataset
-from src.model import DualSwinFusionSeg
-from src.losses import WeightedBCEDiceLoss, compute_metrics, compute_pos_weight
-from src.utils import (
+from .augmentations import build_train_transforms, build_val_transforms
+from .dataset import MarsSegDataset
+from .model import DualSwinFusionSeg
+from .losses import WeightedBCEDiceLoss, compute_metrics, compute_pos_weight
+from .utils import (
     set_seed, EMA, make_lr_lambda, ensemble_predict_tiffs, zip_submission,
 )
 
