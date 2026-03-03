@@ -29,8 +29,8 @@ trained_model_output.zip
 
 # Dataset files (too large for git — place manually, see README)
 data/
-*.tif
-*.TIF
+# *.tif
+# *.TIF
 *.npy
 
 # Temporary / scratch
@@ -44,3 +44,6 @@ trained_model_output.zip
 # Keep JSON config/reports tracked (override the above for specific files)
 # !trained_model_output/kfold_results_v4/norm_stats_v4.json
 # !trained_model_output/kfold_results_v4/kfold_report_v4.json
+
+submitted_training.ipynb
+submitted_inferen.ipynb
