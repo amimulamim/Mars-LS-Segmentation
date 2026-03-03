@@ -31,9 +31,12 @@ This repository contains the complete training and inference pipeline for our Ma
 │   ├── model.py                    # Encoders, decoders, fusions, DualSwinFusionSeg
 │   ├── losses.py                   # BCE+Dice loss, metrics, pos_weight
 │   └── utils.py                    # EMA, seed, TTA, submission I/O, model loading
-├── notebooks/                      # Original Kaggle notebooks (for reference)
-│   ├── dual_swin_unetpp_kfold_training.ipynb  # Full training notebook
-│   └── dual_swin_unetpp_kfold_infer.ipynb     # Inference-only notebook
+├── notebooks/                      # Main submission notebooks
+│   ├── dual_swin_unetpp_kfold_training.ipynb  # Dual Swin + UNet++ training
+│   └── dual_swin_unetpp_kfold_infer.ipynb     # Dual Swin + UNet++ inference
+├── experiments/                    # Architecture experiments (not submitted)
+│   ├── dual_swin_hybrid_sfxunetpp_attn_kfold_training.ipynb  # Hybrid SegFormer×UNet++ + channel attention
+│   └── dual_swin_hybrid_sfxunetpp_attn_kfold_infer.ipynb     # Hybrid SegFormer×UNet++ inference
 ├── data/                           # Datasets (not tracked by git — see below)
 │   ├── phase1_dataset/             # Mars LS Phase 1 dataset
 │   │   ├── train/
@@ -267,9 +270,13 @@ The script outputs:
 
 ### 4. Training/Inference via Notebooks
 
-The original Kaggle notebooks are preserved in `notebooks/`:
-- `notebooks/dual_swin_unetpp_kfold_training.ipynb` — full training pipeline
+**Main submission notebooks** in `notebooks/`:
+- `notebooks/dual_swin_unetpp_kfold_training.ipynb` — full training pipeline (Dual Swin + UNet++)
 - `notebooks/dual_swin_unetpp_kfold_infer.ipynb` — inference with TTA + ensemble
+
+**Experiment notebooks** in `experiments/`:
+- `experiments/dual_swin_hybrid_sfxunetpp_attn_kfold_training.ipynb` — Hybrid SegFormer×UNet++ decoder + channel attention (ECA/SE/CBAM) training
+- `experiments/dual_swin_hybrid_sfxunetpp_attn_kfold_infer.ipynb` — Hybrid SegFormer×UNet++ inference
 
 Configure paths in the notebook cells and run all cells sequentially.
 
@@ -316,8 +323,10 @@ Training with `batch_size=16` requires ~10 GB VRAM. Reduce to 8 if running on 8 
 | `src/model.py` | `DualSwinFusionSeg` + all decoders (UNet++, UPerNet, etc.) + all fusions |
 | `src/losses.py` | `WeightedBCEDiceLoss`, evaluation metrics, pos_weight computation |
 | `src/utils.py` | EMA, seed, TTA, model loading, submission writing |
-| `notebooks/dual_swin_unetpp_kfold_training.ipynb` | Self-contained training notebook (Dual Swin + UNet++) |
-| `notebooks/dual_swin_unetpp_kfold_infer.ipynb` | Self-contained inference notebook (ensemble + TTA) |
+| `notebooks/dual_swin_unetpp_kfold_training.ipynb` | Dual Swin + UNet++ training (5-fold, submitted) |
+| `notebooks/dual_swin_unetpp_kfold_infer.ipynb` | Dual Swin + UNet++ inference (ensemble + TTA, submitted) |
+| `experiments/dual_swin_hybrid_sfxunetpp_attn_kfold_training.ipynb` | Hybrid SegFormer×UNet++ + channel attention training |
+| `experiments/dual_swin_hybrid_sfxunetpp_attn_kfold_infer.ipynb` | Hybrid SegFormer×UNet++ inference |
 
 ---
 

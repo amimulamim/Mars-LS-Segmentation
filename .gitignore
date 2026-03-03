@@ -46,4 +46,4 @@ trained_model_output.zip
 # !trained_model_output/kfold_results_v4/kfold_report_v4.json
 
 submitted_training.ipynb
-submitted_inferen.ipynb
+submitted_infer.ipynb
