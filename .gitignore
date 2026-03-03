@@ -28,8 +28,8 @@ v4_inference_output/
 trained_model_output.zip
 
 # Dataset files (should not be committed)
-*.tif
-*.TIF
+# *.tif
+# *.TIF
 *.npy
 
 # Temporary / scratch
