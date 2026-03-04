@@ -1,51 +1,96 @@
 # Mars Landslide Segmentation — Dual Swin V2 with K-Fold Cross-Validation
 
+## Table of Contents
+
+- [Mars Landslide Segmentation — Dual Swin V2 with K-Fold Cross-Validation](#mars-landslide-segmentation--dual-swin-v2-with-k-fold-cross-validation)
+  - [Table of Contents](#table-of-contents)
+  - [Overview](#overview)
+  - [Architecture at a Glance](#architecture-at-a-glance)
+    - [Preprocessing](#preprocessing)
+  - [Repository Structure](#repository-structure)
+  - [Dataset](#dataset)
+    - [Data Splits](#data-splits)
+    - [Expected Directory Layout](#expected-directory-layout)
+  - [Pre-trained Checkpoints](#pre-trained-checkpoints)
+  - [Environment Setup](#environment-setup)
+  - [Training](#training)
+    - [Quick Start](#quick-start)
+    - [Different Architectures](#different-architectures)
+    - [Tuning Hyperparameters](#tuning-hyperparameters)
+    - [Background Training (tmux)](#background-training-tmux)
+  - [Inference](#inference)
+    - [With Pre-trained Checkpoints](#with-pre-trained-checkpoints)
+    - [With Freshly Trained Checkpoints](#with-freshly-trained-checkpoints)
+    - [Non-Default Architecture (must match training)](#non-default-architecture-must-match-training)
+    - [Options](#options)
+    - [Output](#output)
+  - [Notebooks](#notebooks)
+  - [CLI Reference](#cli-reference)
+    - [Training Arguments (`python -m src.train`)](#training-arguments-python--m-srctrain)
+    - [Inference Arguments (`python -m src.infer`)](#inference-arguments-python--m-srcinfer)
+  - [Cross-Validation Results](#cross-validation-results)
+  - [Hardware Requirements](#hardware-requirements)
+  - [Key Files](#key-files)
+  - [License](#license)
+
+---
+
 ## Overview
 
 This repository implements a complete training and inference pipeline for the **Mars Landslide Segmentation (Mars LS)** challenge. The core method uses a **Dual-Encoder Swin Transformer V2** architecture — two separate Swin V2 Small backbones for RGB and auxiliary modalities (DEM, Slope, Thermal, Grayscale), fused at the feature level and decoded into binary landslide masks.
 
-### Core Concepts & Techniques
+> For a detailed explanation of all architectural concepts, attention mechanisms, fusion strategies, and experiment progression, see [OVERVIEW.md](OVERVIEW.md).
 
-| Concept | What it does | Why it helps |
-|---------|-------------|--------------|
-| **Dual-encoder architecture** | Separate Swin V2 backbones for RGB (3ch) and AUX (4ch: DEM, Slope, Thermal, Gray) | Lets each modality learn specialized features; avoids forcing heterogeneous bands through one encoder |
-| **Swin Transformer V2** | Hierarchical vision transformer with shifted windows (timm: `swinv2_small_window8_256`) | Strong ImageNet-pretrained backbone with multi-scale features, better than CNN for small medical/geo datasets |
-| **Feature-level fusion** | Merge dual-encoder features before the decoder (default: concat + 1×1 conv) | Richer representation than late (logit-level) fusion; lets decoder reason about both modalities jointly |
-| **UNet++ decoder** | Nested skip-connection decoder | Dense skip paths recover fine-grained spatial detail lost in the encoder |
-| **Per-image percentile normalization (v4)** | Each band clipped to its own image's P1/P99 → [0,1], then globally z-scored | Eliminates domain shift (e.g., DEM train range [-1345, 3110] vs test [4275, 7232]) |
-| **K-Fold cross-validation** | 5-fold CV over combined train+val split | Maximizes training data usage; provides robust metric estimation |
-| **Ensemble inference** | Average predictions from all K fold models | Reduces variance; smoother probability maps before thresholding |
-| **Test-Time Augmentation (TTA)** | 4-fold: original + H-flip + V-flip + 90° rotation | Exploits symmetry of satellite imagery for ~1-2% IoU gain |
-| **EMA (Exponential Moving Average)** | Maintain running average of model weights with warmup | Stabilizes training; often yields better generalization than raw weights |
-| **Weighted BCE + Dice loss** | 0.5 × BCE(pos_weight) + 0.5 × Dice | BCE handles pixel-level accuracy; Dice handles class imbalance directly |
+---
 
-### Architectures Explored
+## Architecture at a Glance
 
-The codebase supports **5 decoders** and **6 fusion strategies** that can be mixed and matched via CLI flags:
+```
+Input: 7-band GeoTIFF
+  │
+  ├── RGB (3ch)  ──► Swin V2 Small (ImageNet pretrained) ──► 4-level features
+  │                                                              │
+  └── AUX (4ch)  ──► Swin V2 Small (adapted patch embed) ──► 4-level features
+                                                                 │
+                                     Feature Fusion (per level) ◄┘
+                                           │
+                                        Decoder
+                                           │
+                                     1×1 Conv Head
+                                           │
+                                     Binary Mask (128×128)
+```
 
-**Decoders** (plug into `--decoder_name`):
+| Component | Default (submitted) | Alternatives |
+|-----------|-------------------|--------------|
+| **Encoder** | `swinv2_small_window8_256` | Any timm-compatible model |
+| **Decoder** | `unetplusplus` | `upernet`, `segformer_mlp`, `deeplabv3plus`, `fpn`, `hybrid_segformer_unetpp` |
+| **Fusion** | `concat1x1` | `late_logits`, `weighted_sum`, `gated`, `film`, `cross_attn`, `concat_se`, `concat_eca`, `concat_cbam` |
+| **Loss** | 0.5 × BCE + 0.5 × Dice | Hybrid BCE+Dice+Boundary+Lovász (experiments) |
+| **Optimizer** | AdamW (lr=2e-4, wd=1e-4) | — |
+| **Scheduler** | Linear warmup (3 ep) + cosine decay | — |
+| **EMA** | Decay=0.995 with warmup | — |
+| **Parameters** | ~100M | — |
 
-| Decoder | Description |
-|---------|-------------|
-| `unetplusplus` | UNet++ — nested dense skip connections (default, **submitted**) |
-| `upernet` | UPerNet — PPM + FPN-style multi-scale aggregation |
-| `segformer_mlp` | SegFormer MLP decoder — lightweight all-MLP design |
-| `deeplabv3plus` | DeepLab V3+ — ASPP multi-scale atrous convolutions + low-level skip |
-| `fpn` | Simple FPN — feature pyramid with lateral connections |
+The experiment notebooks in `experiments/` explore additional concepts not in the submitted model:
 
-**Fusion strategies** (plug into `--fusion_name`):
+| Concept | Summary | Details |
+|---------|---------|---------|
+| Hybrid SegFormer×UNet++ decoder | Parallel SegFormer (global context) + UNet++ (local detail) paths, fused via SE gate | [OVERVIEW.md §2b](OVERVIEW.md#2b-hybrid-segformer--unet-decoder) |
+| Channel attention (SE / ECA / CBAM) | Per-channel feature recalibration at various pipeline stages | [OVERVIEW.md §3](OVERVIEW.md#3-channel-attention-mechanisms) |
+| Multi-location attention | Attention at input, intra-encoder, and decoder-output | [OVERVIEW.md §4](OVERVIEW.md#4-multi-location-attention) |
+| Attention-enhanced fusion | SE / ECA / CBAM applied after feature concatenation | [OVERVIEW.md §6](OVERVIEW.md#6-fusion-strategies) |
+| Late fusion | Separate encoder+decoder per modality with learnable logit blending | [OVERVIEW.md §7](OVERVIEW.md#7-late-fusion-architecture) |
+| Boundary + Lovász loss | Multi-component loss with boundary upweighting and IoU surrogate | [OVERVIEW.md §8](OVERVIEW.md#8-loss-functions--training-objectives) |
+| Deep supervision | Auxiliary heads on intermediate UNet++ nodes for gradient flow | [OVERVIEW.md §8](OVERVIEW.md#8-loss-functions--training-objectives) |
 
-| Fusion | Description |
-|--------|-------------|
-| `concat1x1` | Concatenate dual features → 1×1 conv projection (default, **submitted**) |
-| `late_logits` | Each encoder gets its own decoder; logits averaged at the end |
-| `weighted_sum` | Learnable per-level scalar weights to sum dual features |
-| `gated` | Sigmoid gating network selects how much of each encoder to use |
-| `film` | Feature-wise Linear Modulation — AUX encoder modulates RGB features via scale+shift |
-| `cross_attn` | Cross-attention between RGB and AUX feature maps at each level |
+### Preprocessing
 
-**Experiments** (in `experiments/`):
-- **Hybrid SegFormer×UNet++ decoder** with **channel attention** (ECA / SE / CBAM) — fuses SegFormer's lightweight MLP aggregation with UNet++'s dense skip connections, plus per-channel recalibration
+1. **Per-image percentile normalization**: Each band clipped to P1/P99 → [0, 1] (domain-invariant)
+2. **Z-score standardization**: Global mean/std from training set (`norm_stats_v4.json`)
+3. **Augmentations** (train): HorizontalFlip, VerticalFlip, RandomRotate90, Affine, GaussianBlur, RandomBrightnessContrast
+
+> More details: [OVERVIEW.md §9](OVERVIEW.md#9-domain-invariant-normalization)
 
 ---
 
@@ -53,32 +98,45 @@ The codebase supports **5 decoders** and **6 fusion strategies** that can be mix
 
 ```
 .
-├── README.md                       # This file
+├── README.md                       # This file — setup & running guide
+├── OVERVIEW.md                     # Architecture concepts deep-dive
 ├── requirements.txt                # Python dependencies (pip)
 ├── environment.yml                 # Conda environment specification
+│
 ├── src/                            # All source code (Python package)
 │   ├── __init__.py
 │   ├── train.py                    # Training entry point (CLI)
 │   ├── infer.py                    # Inference entry point (CLI)
 │   ├── config.py                   # Constants, channel maps, default hyperparameters
 │   ├── normalization.py            # Per-image percentile normalization & stats I/O
-│   ├── augmentations.py            # Albumentations augmentation pipelines
+│   ├── augmentations.py            # Augmentation pipelines (standard + strong)
 │   ├── dataset.py                  # MarsSegDataset (train/val) & InferenceDataset (test)
-│   ├── model.py                    # DualSwinFusionSeg + all decoders & fusions
-│   ├── losses.py                   # WeightedBCEDiceLoss, metrics, pos_weight
-│   └── utils.py                    # EMA, seed, TTA, model loading, submission I/O
+│   ├── losses.py                   # Loss functions, metrics, pos_weight
+│   ├── utils.py                    # EMA, seed, TTA, model loading, submission I/O
+│   └── model/                      # Model architecture package
+│       ├── __init__.py             # Re-exports all public classes/functions
+│       ├── attention.py            # SE, ECA, CBAM + position wrappers
+│       ├── decoders.py             # 6 decoder architectures + registry
+│       ├── fusions.py              # 9 fusion strategies + registry
+│       └── core.py                 # Backbone helpers + DualSwinFusionSeg
+│                                   #   + DualSwinLateFusionSeg
+│
 ├── notebooks/                      # Main submission notebooks (Kaggle-ready)
 │   ├── dual_swin_unetpp_kfold_training.ipynb
 │   └── dual_swin_unetpp_kfold_infer.ipynb
+│
 ├── experiments/                    # Architecture experiments (not submitted)
-│   ├── dual_swin_hybrid_sfxunetpp_attn_kfold_training.ipynb
-│   └── dual_swin_hybrid_sfxunetpp_attn_kfold_infer.ipynb
+│   ├── mid_fusion_concat_eca_hybrid_dec/
+│   │   ├── training.ipynb          # Hybrid decoder + channel attention + ECA fusion
+│   │   └── inference.ipynb
+│   └── late_fusion_alpha_blend_hybrid_dec/
+│       ├── training.ipynb          # Late fusion + learnable α-blend
+│       └── inference.ipynb
+│
 ├── data/                           # Datasets (NOT tracked — see Dataset section)
 │   ├── phase1_dataset/
 │   └── phase2_dataset/
-├── output/                         # All runtime outputs (gitignored)
-│   ├── kfold_results_v4/           # Default training output
-│   └── inference_output*/          # Default inference output
+│
 └── trained_model_output/           # Pre-trained weights from HuggingFace
     └── kfold_results_v4/
         ├── norm_stats_v4.json
@@ -88,36 +146,19 @@ The codebase supports **5 decoders** and **6 fusion strategies** that can be mix
 
 ---
 
-## Pre-trained Checkpoints
-
-Trained model weights (5 folds, ~433 MB each) are hosted on HuggingFace:
-
-> **https://huggingface.co/amimulamim/Mars-LS-Seg_Checkpoints/tree/main/checkpoints/swinv2_unetplusplus_concat1x1**
-
-Download all 5 checkpoint files (`fold1_best.pt` … `fold5_best.pt`) and place them in:
-```
-trained_model_output/kfold_results_v4/checkpoints/swinv2_unetplusplus_concat1x1/
-```
-
-The pretrained Swin V2 Small backbone is automatically downloaded from HuggingFace/timm on first run.
-
----
-
 ## Dataset
 
-The model is trained on the **Mars Landslide Segmentation (Mars LS)** dataset:
-- **Format**: 7-band GeoTIFF files (128×128 pixels)
-- **Bands** (1-indexed, rasterio order):
+**Mars Landslide Segmentation (Mars LS)** — 7-band GeoTIFF files (128×128 pixels).
 
-  | Band | Channel |
-  |------|---------|
-  | 1 | Thermal |
-  | 2 | Slope |
-  | 3 | DEM (Digital Elevation Model) |
-  | 4 | Grayscale |
-  | 5, 6, 7 | RGB |
+| Band | Channel |
+|------|---------|
+| 1 | Thermal |
+| 2 | Slope |
+| 3 | DEM (Digital Elevation Model) |
+| 4 | Grayscale |
+| 5, 6, 7 | RGB |
 
-- **Masks**: Binary (0 = background, 1 = landslide)
+**Masks**: Binary (0 = background, 1 = landslide).
 
 ### Data Splits
 
@@ -128,9 +169,9 @@ The model is trained on the **Mars Landslide Segmentation (Mars LS)** dataset:
 | `data/phase1_dataset/test/` | Phase 1 | 133 | — |
 | `data/phase2_dataset/test/` | Phase 2 | 276 | — |
 
-> **Note:** The `data/` directory is **not tracked by git** (too large). Place the datasets manually.
+> The `data/` directory is **not tracked by git**. Place the datasets manually.
 
-### Expected Dataset Directory Structure
+### Expected Directory Layout
 
 ```
 data/
@@ -150,56 +191,22 @@ data/
 
 ---
 
-## Model Architecture
+## Pre-trained Checkpoints
 
+Trained model weights (5 folds, ~433 MB each) are hosted on HuggingFace:
+
+> **https://huggingface.co/amimulamim/Mars-LS-Seg_Checkpoints/tree/main/checkpoints/swinv2_unetplusplus_concat1x1**
+
+Download all 5 checkpoint files (`fold1_best.pt` … `fold5_best.pt`) and place them in:
 ```
-Input: 7-band GeoTIFF
-  │
-  ├── RGB (3ch)  ──► Swin V2 Small (ImageNet pretrained) ──► 4-level features
-  │                                                              │
-  └── AUX (4ch)  ──► Swin V2 Small (adapted patch embed) ──► 4-level features
-                                                                 │
-                                     Feature Fusion (per level) ◄┘
-                                           │
-                                        Decoder
-                                           │
-                                     1×1 Conv Head
-                                           │
-                                     Binary Mask (128×128)
+trained_model_output/kfold_results_v4/checkpoints/swinv2_unetplusplus_concat1x1/
 ```
 
-| Component | Default | Options |
-|-----------|---------|---------|
-| **Encoder** | `swinv2_small_window8_256` | Any timm-compatible model |
-| **Decoder** | `unetplusplus` (FPN ch=256) | `upernet`, `segformer_mlp`, `deeplabv3plus`, `fpn` |
-| **Fusion** | `concat1x1` | `late_logits`, `weighted_sum`, `gated`, `film`, `cross_attn` |
-| **Loss** | 0.5 × BCE(pos_weight) + 0.5 × Dice | — |
-| **Optimizer** | AdamW (lr=2e-4, wd=1e-4) | — |
-| **Scheduler** | Linear warmup (3 epochs) + cosine decay | — |
-| **EMA** | Decay=0.995 with warmup | — |
-| **Parameters** | ~100M (dual encoder + decoder + fusion) | — |
+The pretrained Swin V2 Small backbone is automatically downloaded from HuggingFace/timm on first run.
 
 ---
 
-## Preprocessing / Normalization (v4 — Domain-Invariant)
-
-1. **Per-image percentile normalization**: For each image independently, each band is:
-   - Clipped to its own P1 and P99 percentiles
-   - Rescaled to [0, 1]
-
-   This eliminates sensitivity to absolute value shifts between domains (e.g., DEM in training has elevations [-1345, 3110] while test has [4275, 7232]).
-
-2. **Z-score standardization**: After per-image normalization, channels are standardized using global mean/std computed over the training set (saved in `norm_stats_v4.json`).
-
-3. **Augmentations** (training only):
-   - **Geometric**: HorizontalFlip, VerticalFlip, RandomRotate90, Affine (translate, scale, rotate)
-   - **Photometric** (RGB only): GaussianBlur, RandomBrightnessContrast
-
----
-
-## How to Reproduce Results
-
-### 1. Environment Setup
+## Environment Setup
 
 **Option A: Conda (recommended)**
 ```bash
@@ -224,77 +231,24 @@ The notebooks in `notebooks/` can run directly on Kaggle with GPU. Dependencies 
 
 ---
 
-### 2. Configuration Reference
+## Training
 
-Both `src/train.py` and `src/infer.py` are fully configurable via CLI flags. All arguments have sensible defaults defined in `src/config.py`.
+### Quick Start
 
-#### Training Arguments (`python -m src.train`)
-
-| Argument | Type | Default | Description |
-|----------|------|---------|-------------|
-| `--data_root` | str | **required** | Path to dataset root (must contain `train/`, `val/`, `test/` subdirs) |
-| `--out_dir` | str | `output/kfold_results_v4` | Output directory for checkpoints, stats, reports, submissions |
-| `--encoder_name` | str | `swinv2_small_window8_256` | timm encoder backbone name |
-| `--decoder_name` | str | `unetplusplus` | Decoder head: `unetplusplus`, `upernet`, `segformer_mlp`, `deeplabv3plus`, `fpn` |
-| `--fusion_name` | str | `concat1x1` | Fusion strategy: `concat1x1`, `late_logits`, `weighted_sum`, `gated`, `film`, `cross_attn` |
-| `--fpn_channels` | int | `256` | Number of channels in decoder FPN layers |
-| `--img_size` | int | `128` | Input image resolution (resized if different from native) |
-| `--epochs` | int | `50` | Training epochs per fold |
-| `--batch_size` | int | `16` | Training batch size |
-| `--num_workers` | int | `2` | DataLoader workers |
-| `--lr` | float | `2e-4` | Initial learning rate |
-| `--weight_decay` | float | `1e-4` | AdamW weight decay |
-| `--seed` | int | `42` | Random seed for reproducibility |
-| `--n_folds` | int | `5` | Number of cross-validation folds |
-| `--ema_decay` | float | `0.995` | EMA decay rate |
-| `--warmup_epochs` | int | `3` | LR warmup epochs |
-| `--thresh` | float | `0.5` | Binarization threshold for validation metrics |
-| `--no_pretrained` | flag | `False` | Disable ImageNet pretrained weights |
-| `--no_amp` | flag | `False` | Disable automatic mixed precision |
-
-#### Inference Arguments (`python -m src.infer`)
-
-| Argument | Type | Default | Description |
-|----------|------|---------|-------------|
-| `--test_dir` | str | **required** | Directory containing test `.tif` files |
-| `--ckpt_dir` | str | **required** | Directory containing `fold{1..K}_best.pt` checkpoints |
-| `--stats_json` | str | `None` | Path to `norm_stats_v4.json` (required unless `--recompute_from` is given) |
-| `--recompute_from` | str | `None` | If stats_json unavailable, recompute stats from this dataset root |
-| `--out_dir` | str | `output/inference_output` | Output directory for predictions and submission zip |
-| `--encoder_name` | str | `swinv2_small_window8_256` | Must match the encoder used during training |
-| `--decoder_name` | str | `unetplusplus` | Must match the decoder used during training |
-| `--fusion_name` | str | `concat1x1` | Must match the fusion used during training |
-| `--fpn_channels` | int | `256` | Must match training |
-| `--img_size` | int | `128` | Must match training |
-| `--orig_size` | int | `128` | Output mask resolution |
-| `--batch_size` | int | `8` | Inference batch size |
-| `--num_workers` | int | `2` | DataLoader workers |
-| `--thresh` | float | `0.51` | Binarization threshold |
-| `--n_folds` | int | `5` | Number of fold checkpoints to load |
-| `--no_tta` | flag | `False` | Disable test-time augmentation (faster, slightly less accurate) |
-| `--seed` | int | `42` | Random seed |
-
-> **Important**: For inference, `--encoder_name`, `--decoder_name`, `--fusion_name`, `--fpn_channels`, and `--img_size` **must match** the values used during training, or the checkpoint will fail to load.
-
----
-
-### 3. Training
-
-#### Quick start (defaults)
 ```bash
 python -m src.train --data_root data/phase1_dataset
 ```
 
 This will:
 1. Combine train + val images → 531 samples for 5-fold CV
-2. Compute per-image normalization stats → `output/kfold_results_v4/norm_stats_v4.json`
+2. Compute per-image normalization stats → `norm_stats_v4.json`
 3. Train 5 folds × 50 epochs with EMA + cosine LR
-4. Save best checkpoint per fold → `output/kfold_results_v4/checkpoints/swinv2_unetplusplus_concat1x1/`
-5. Generate ensemble test predictions → `output/kfold_results_v4/submissions/`
-6. Write K-Fold report → `output/kfold_results_v4/kfold_report_v4.json`
-7. Save training curves plot
+4. Save best checkpoint per fold
+5. Generate ensemble test predictions + submission zip
+6. Write K-Fold report
 
-#### Example: different architecture
+### Different Architectures
+
 ```bash
 # UPerNet decoder + cross-attention fusion
 python -m src.train \
@@ -303,6 +257,13 @@ python -m src.train \
     --fusion_name cross_attn \
     --out_dir output/experiment_upernet_crossattn
 
+# Hybrid decoder + ECA fusion
+python -m src.train \
+    --data_root data/phase1_dataset \
+    --decoder_name hybrid_segformer_unetpp \
+    --fusion_name concat_eca \
+    --out_dir output/experiment_hybrid_eca
+
 # SegFormer MLP decoder + gated fusion, smaller batch for 8GB GPU
 python -m src.train \
     --data_root data/phase1_dataset \
@@ -310,56 +271,35 @@ python -m src.train \
     --fusion_name gated \
     --batch_size 8 \
     --out_dir output/experiment_segformer_gated
-
-# DeepLabV3+ with FiLM fusion, 3-fold CV, more epochs
-python -m src.train \
-    --data_root data/phase1_dataset \
-    --decoder_name deeplabv3plus \
-    --fusion_name film \
-    --n_folds 3 \
-    --epochs 80 \
-    --out_dir output/experiment_deeplabv3plus_film
-
-# Simple FPN decoder + late logits fusion (each encoder gets its own decoder)
-python -m src.train \
-    --data_root data/phase1_dataset \
-    --decoder_name fpn \
-    --fusion_name late_logits \
-    --out_dir output/experiment_fpn_late
 ```
 
-#### Example: tune training hyperparameters
+### Tuning Hyperparameters
+
 ```bash
 python -m src.train \
     --data_root data/phase1_dataset \
-    --lr 1e-4 \
-    --weight_decay 5e-4 \
-    --ema_decay 0.999 \
-    --warmup_epochs 5 \
-    --batch_size 8 \
-    --epochs 100 \
-    --no_amp
+    --lr 1e-4 --weight_decay 5e-4 \
+    --ema_decay 0.999 --warmup_epochs 5 \
+    --batch_size 8 --epochs 100 --no_amp
 ```
 
-#### Running in background (tmux)
+### Background Training (tmux)
+
 ```bash
 tmux new-session -d -s train \
   "conda run --no-capture-output -n mars_ls \
    python -m src.train --data_root data/phase1_dataset \
    2>&1 | tee output/train.log"
-
-# Attach to watch progress
-tmux attach -t train
-# Detach: Ctrl+B  d
+tmux attach -t train    # Ctrl+B d to detach
 ```
 
-**Estimated training time**: ~3–5 hours on a single NVIDIA T4/P100 (50 epochs × 5 folds).
+**Estimated time**: ~3–5 hours on a single NVIDIA T4/P100 (50 epochs × 5 folds).
 
 ---
 
-### 4. Inference
+## Inference
 
-#### With pre-trained HuggingFace checkpoints
+### With Pre-trained Checkpoints
 
 **Phase 1 test set:**
 ```bash
@@ -379,7 +319,8 @@ python -m src.infer \
     --out_dir output/inference_output_phase2
 ```
 
-#### With freshly trained checkpoints (uses output/ paths)
+### With Freshly Trained Checkpoints
+
 ```bash
 python -m src.infer \
     --test_dir data/phase1_dataset/test/images \
@@ -387,30 +328,26 @@ python -m src.infer \
     --stats_json output/kfold_results_v4/norm_stats_v4.json
 ```
 
-#### With a non-default architecture (must match training)
+### Non-Default Architecture (must match training)
+
 ```bash
-# If you trained with upernet + cross_attn:
 python -m src.infer \
     --test_dir data/phase1_dataset/test/images \
     --ckpt_dir output/experiment_upernet_crossattn/checkpoints/swinv2_upernet_cross_attn \
     --stats_json output/experiment_upernet_crossattn/norm_stats_v4.json \
-    --decoder_name upernet \
-    --fusion_name cross_attn
+    --decoder_name upernet --fusion_name cross_attn
 ```
 
-#### Inference options
+### Options
+
 ```bash
-# Disable TTA for faster inference (~2-4× speedup):
-python -m src.infer --test_dir ... --ckpt_dir ... --stats_json ... --no_tta
-
-# Custom binarization threshold:
-python -m src.infer --test_dir ... --ckpt_dir ... --stats_json ... --thresh 0.5
-
-# 3-fold model (if trained with --n_folds 3):
-python -m src.infer --test_dir ... --ckpt_dir ... --stats_json ... --n_folds 3
+--no_tta          # Disable TTA (~2-4× faster)
+--thresh 0.5      # Custom binarization threshold
+--n_folds 3       # If trained with 3 folds
 ```
 
-#### Output
+### Output
+
 ```
 output/inference_output/
 ├── predictions/        # Individual mask .tif files
@@ -419,23 +356,80 @@ output/inference_output/
 
 ---
 
-### 5. Training/Inference via Notebooks
+## Notebooks
 
-**Main submission notebooks** in `notebooks/`:
-- `notebooks/dual_swin_unetpp_kfold_training.ipynb` — full training pipeline (Dual Swin + UNet++)
-- `notebooks/dual_swin_unetpp_kfold_infer.ipynb` — inference with TTA + ensemble
+**Main submission** (`notebooks/`):
+- `submitted_training.ipynb` — submitted training pipeline
+- `submitted_infer.ipynb` — submitted inference pipeline
+- `dual_swin_unetpp_kfold_training.ipynb` — full training (Dual Swin + UNet++)
+- `dual_swin_unetpp_kfold_infer.ipynb` — inference with TTA + ensemble
 
-**Experiment notebooks** in `experiments/`:
-- `experiments/dual_swin_hybrid_sfxunetpp_attn_kfold_training.ipynb` — Hybrid SegFormer×UNet++ + channel attention (ECA/SE/CBAM)
-- `experiments/dual_swin_hybrid_sfxunetpp_attn_kfold_infer.ipynb` — Hybrid SegFormer×UNet++ inference
+**Experiments** (`experiments/`):
 
-Configure paths in the notebook cells and run all cells sequentially.
+| Folder | Description |
+|--------|-------------|
+| `mid_fusion_concat_eca_hybrid_dec/` | Mid-fusion with ECA-enhanced concat + Hybrid SegFormer×UNet++ decoder + multi-location attention |
+| `late_fusion_alpha_blend_hybrid_dec/` | Late fusion with learnable α-blend + independent Hybrid decoders per modality |
+
+Each experiment folder contains a `training.ipynb` and `inference.ipynb` pair. Configure paths in the notebook config cells and run all cells sequentially.
+
+---
+
+## CLI Reference
+
+### Training Arguments (`python -m src.train`)
+
+| Argument | Type | Default | Description |
+|----------|------|---------|-------------|
+| `--data_root` | str | **required** | Path to dataset root |
+| `--out_dir` | str | `output/kfold_results_v4` | Output directory |
+| `--encoder_name` | str | `swinv2_small_window8_256` | timm backbone |
+| `--decoder_name` | str | `unetplusplus` | `unetplusplus`, `upernet`, `segformer_mlp`, `deeplabv3plus`, `fpn`, `hybrid_segformer_unetpp` |
+| `--fusion_name` | str | `concat1x1` | `concat1x1`, `late_logits`, `weighted_sum`, `gated`, `film`, `cross_attn`, `concat_se`, `concat_eca`, `concat_cbam` |
+| `--fpn_channels` | int | `256` | Decoder FPN channels |
+| `--img_size` | int | `128` | Input resolution |
+| `--epochs` | int | `50` | Epochs per fold |
+| `--batch_size` | int | `16` | Batch size |
+| `--num_workers` | int | `2` | DataLoader workers |
+| `--lr` | float | `2e-4` | Learning rate |
+| `--weight_decay` | float | `1e-4` | AdamW weight decay |
+| `--seed` | int | `42` | Random seed |
+| `--n_folds` | int | `5` | CV folds |
+| `--ema_decay` | float | `0.995` | EMA decay rate |
+| `--warmup_epochs` | int | `3` | LR warmup epochs |
+| `--thresh` | float | `0.5` | Validation threshold |
+| `--no_pretrained` | flag | pretrained=**True** | Pass flag to disable ImageNet pretrained weights |
+| `--no_amp` | flag | amp=**True** | Pass flag to disable mixed precision |
+
+### Inference Arguments (`python -m src.infer`)
+
+| Argument | Type | Default | Description |
+|----------|------|---------|-------------|
+| `--test_dir` | str | **required** | Test image directory |
+| `--ckpt_dir` | str | **required** | Checkpoint directory |
+| `--stats_json` | str | `None` | Normalization stats JSON |
+| `--recompute_from` | str | `None` | Recompute stats from this dataset root |
+| `--out_dir` | str | `output/inference_output` | Output directory |
+| `--encoder_name` | str | `swinv2_small_window8_256` | Must match training |
+| `--decoder_name` | str | `unetplusplus` | Must match training |
+| `--fusion_name` | str | `concat1x1` | Must match training |
+| `--fpn_channels` | int | `256` | Must match training |
+| `--img_size` | int | `128` | Must match training |
+| `--orig_size` | int | `128` | Output mask resolution |
+| `--batch_size` | int | `8` | Inference batch size |
+| `--num_workers` | int | `2` | DataLoader workers |
+| `--thresh` | float | `0.51` | Binarization threshold |
+| `--n_folds` | int | `5` | Number of fold checkpoints |
+| `--no_tta` | flag | tta=**True** | Pass flag to disable test-time augmentation |
+| `--seed` | int | `42` | Random seed |
+
+> **Important**: `--encoder_name`, `--decoder_name`, `--fusion_name`, `--fpn_channels`, and `--img_size` **must match** the values used during training.
 
 ---
 
 ## Cross-Validation Results
 
-Results from 5-fold cross-validation with the default configuration (from `kfold_report_v4.json`):
+Results from 5-fold CV with the default configuration (from `kfold_report_v4.json`):
 
 | Metric | Mean ± Std |
 |--------|-----------|
@@ -445,6 +439,8 @@ Results from 5-fold cross-validation with the default configuration (from `kfold
 | **F1 (foreground)** | 0.8872 ± 0.0096 |
 | **Precision (fg)** | 0.8626 ± 0.0106 |
 | **Recall (fg)** | 0.9133 ± 0.0111 |
+
+> For experiment version progression and mIoU across architectures, see [OVERVIEW.md §11](OVERVIEW.md#11-experiment-version-progression).
 
 ---
 
@@ -469,14 +465,18 @@ Training with `batch_size=16` requires ~10 GB VRAM. Use `--batch_size 8` for 8 G
 | `src/infer.py` | CLI inference — loads checkpoints, TTA, submission zip |
 | `src/config.py` | Channel maps, band indices, `DEFAULT_CFG` dict |
 | `src/normalization.py` | Per-image percentile normalization, stats save/load |
-| `src/augmentations.py` | Albumentations augmentation pipelines |
+| `src/augmentations.py` | Augmentation pipelines (standard + strong variant) |
 | `src/dataset.py` | `MarsSegDataset` (train/val) and `InferenceDataset` (test) |
-| `src/model.py` | `DualSwinFusionSeg` + 5 decoders + 6 fusions |
-| `src/losses.py` | `WeightedBCEDiceLoss`, evaluation metrics, pos_weight |
+| `src/losses.py` | Loss functions (BCE+Dice, Boundary, Lovász, deep supervision), metrics |
 | `src/utils.py` | EMA, seed, TTA, model loading, submission writing |
+| `src/model/` | **Model architecture package** (see below) |
+| `src/model/attention.py` | SE, ECA, CBAM modules + position wrappers |
+| `src/model/decoders.py` | 6 decoder architectures + `DECODER_REGISTRY` |
+| `src/model/fusions.py` | 9 fusion strategies + `FUSION_REGISTRY` |
+| `src/model/core.py` | Backbone helpers, `DualSwinFusionSeg`, `DualSwinLateFusionSeg` |
 
 ---
 
 ## License
 
-This code is released for the Mars Landslide Segmentation Challenge. Please cite the challenge dataset and organizers if you use this work.
+This project was developed for the Mars Landslide Segmentation challenge.
