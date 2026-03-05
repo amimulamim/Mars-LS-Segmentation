@@ -28,7 +28,6 @@
   - [CLI Reference](#cli-reference)
     - [Training Arguments (`python -m src.train`)](#training-arguments-python--m-srctrain)
     - [Inference Arguments (`python -m src.infer`)](#inference-arguments-python--m-srcinfer)
-  - [Cross-Validation Results](#cross-validation-results)
   - [Hardware Requirements](#hardware-requirements)
   - [Key Files](#key-files)
   - [License](#license)
@@ -426,19 +425,6 @@ Each experiment folder contains a `training.ipynb` and `inference.ipynb` pair. C
 > **Important**: `--encoder_name`, `--decoder_name`, `--fusion_name`, `--fpn_channels`, and `--img_size` **must match** the values used during training.
 
 ---
-
-## Cross-Validation Results
-
-Results from 5-fold CV with the default configuration (from `kfold_report_v4.json`):
-
-| Metric | Mean ± Std |
-|--------|-----------|
-| **mIoU** | 0.8393 ± 0.0098 |
-| **IoU (foreground)** | 0.7974 ± 0.0154 |
-| **IoU (background)** | 0.8813 ± 0.0054 |
-| **F1 (foreground)** | 0.8872 ± 0.0096 |
-| **Precision (fg)** | 0.8626 ± 0.0106 |
-| **Recall (fg)** | 0.9133 ± 0.0111 |
 
 > For experiment version progression and mIoU across architectures, see [OVERVIEW.md §11](OVERVIEW.md#11-experiment-version-progression).
 
