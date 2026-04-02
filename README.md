@@ -1,4 +1,9 @@
 # Mars Landslide Segmentation — Dual Swin V2 with K-Fold Cross-Validation
+## Challenge Achievement
+
+This repository contains our **3rd-place solution** to the **1st Mars Landslide Segmentation Challenge** at **PBVS @ CVPR 2026**.
+
+A related paper based on this work has been accepted to the **22nd IEEE Workshop on Perception Beyond the Visible Spectrum (PBVS)**, held in conjunction with **CVPR 2026**, and will appear in the **CVPR Workshops (CVPRW) proceedings**.
 
 ## Table of Contents
 
