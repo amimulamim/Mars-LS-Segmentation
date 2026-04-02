@@ -1,5 +1,9 @@
 # Mars Landslide Segmentation — Dual Swin V2 with K-Fold Cross-Validation
 
+> 🏆 **3rd place** at [PBVS 2026: 1st Mars Landslide Segmentation Challenge @ CVPR 2026](https://pbvs-workshop.github.io/)
+>
+> 📄 **Paper accepted** to PBVS @ CVPR 2026 — to be published at **CVPR Workshops 2026**
+
 ## Table of Contents
 
 - [Mars Landslide Segmentation — Dual Swin V2 with K-Fold Cross-Validation](#mars-landslide-segmentation--dual-swin-v2-with-k-fold-cross-validation)
@@ -35,6 +39,8 @@
 ---
 
 ## Overview
+
+This is the official repository of our solution for the **PBVS 2026: 1st Mars Landslide Segmentation Challenge @ CVPR 2026**, where we secured **3rd place**. The associated paper has been accepted to the PBVS workshop and will be published at **CVPR Workshops 2026**.
 
 This repository implements a complete training and inference pipeline for the **Mars Landslide Segmentation (Mars LS)** challenge. The core method uses a **Dual-Encoder Swin Transformer V2** architecture — two separate Swin V2 Small backbones for RGB and auxiliary modalities (DEM, Slope, Thermal, Grayscale), fused at the feature level and decoded into binary landslide masks.
 
@@ -465,4 +471,4 @@ Training with `batch_size=16` requires ~10 GB VRAM. Use `--batch_size 8` for 8 G
 
 ## License
 
-This project was developed for the Mars Landslide Segmentation challenge.
+This project was developed for the **PBVS 2026: 1st Mars Landslide Segmentation Challenge @ CVPR 2026** (**3rd place**). The associated paper is accepted to PBVS @ CVPR 2026 and will be published at CVPR Workshops 2026.
